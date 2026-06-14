@@ -1,0 +1,22 @@
+[build]
+  # 1. تحميل Flutter، 2. إضافته لمسار النظام، 3. بناء تطبيق Wasm
+  command = "git clone https://github.com/flutter/flutter.git -b stable --depth 1 && export PATH=\"$PATH:`pwd`/flutter/bin\" && flutter build web --wasm"
+  publish = "build/web"
+
+[[edge_functions]]
+  path = "/*"
+  function = "secure-wrapper"
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+  force = false
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Cross-Origin-Embedder-Policy = "require-corp"
+    Cross-Origin-Opener-Policy = "same-origin"
