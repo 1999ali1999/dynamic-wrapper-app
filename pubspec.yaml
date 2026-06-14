@@ -15,15 +15,15 @@ dependencies:
   flutter_inappwebview: ^6.1.5
   
   # حزم Firebase التي سنحتاجها لاحقاً لـ Remote Config و App Check
-  firebase_core: ^2.24.2
-  firebase_remote_config: ^4.3.8
-  firebase_app_check: ^0.2.1
+  firebase_core: ^4.10.0
+  firebase_remote_config: ^6.5.2
+  firebase_app_check: ^0.4.4+2
   window_manager: ^0.5.1
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^3.0.1
+  flutter_lints: ^6.0.0
 
 flutter:
   uses-material-design: true

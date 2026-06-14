@@ -3,7 +3,9 @@
 #
 
 list(APPEND FLUTTER_PLUGIN_LIST
+  firebase_app_check
   firebase_core
+  firebase_remote_config
   flutter_inappwebview_windows
   screen_retriever_windows
   window_manager
