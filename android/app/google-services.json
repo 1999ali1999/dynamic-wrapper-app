@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "57937693721",
+    "project_id": "dynamic-wrapper-app",
+    "storage_bucket": "dynamic-wrapper-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:57937693721:android:d7cde332c7b7e5921dee88",
+        "android_client_info": {
+          "package_name": "com.example.dynamic_wrapper_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCA6ZwXMRdMhCCOtz6DztOsG0RJcHDM5Xs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
