@@ -1,0 +1,22 @@
+{
+  "name": "Flutter & Android Advanced Workspace",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+  "features": {
+    "ghcr.io/devcontainers/features/java:1": {
+      "version": "17"
+    }
+  },
+  "postCreateCommand": "bash .devcontainer/setup.sh",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "dart-code.flutter",
+        "dart-code.dart-code"
+      ],
+      "settings": {
+        "dart.flutterSdkPath": "/home/vscode/flutter",
+        "editor.formatOnSave": true
+      }
+    }
+  }
+}
