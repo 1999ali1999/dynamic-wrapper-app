@@ -57,7 +57,6 @@ class DefaultFirebaseOptions {
     projectId: 'dynamic-wrapper-app',
     storageBucket: 'dynamic-wrapper-app.firebasestorage.app',
   );
-
   static const FirebaseOptions ios = FirebaseOptions(
     apiKey: 'AIzaSyAs4vRsyx3byfXflxLeKHSUQPgUtZ-fEKE',
     appId: '1:57937693721:ios:f356101c8c5f58231dee88',
@@ -66,7 +65,6 @@ class DefaultFirebaseOptions {
     storageBucket: 'dynamic-wrapper-app.firebasestorage.app',
     iosBundleId: 'com.example.dynamicWrapperApp',
   );
-
   static const FirebaseOptions macos = FirebaseOptions(
     apiKey: 'AIzaSyAs4vRsyx3byfXflxLeKHSUQPgUtZ-fEKE',
     appId: '1:57937693721:ios:f356101c8c5f58231dee88',

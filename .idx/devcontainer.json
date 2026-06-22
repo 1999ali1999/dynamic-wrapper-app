@@ -4,9 +4,12 @@
   "features": {
     "ghcr.io/devcontainers/features/java:1": {
       "version": "17"
+    },
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "20"
     }
   },
-  "postCreateCommand": "bash .devcontainer/setup.sh",
+  "postCreateCommand": "bash .devcontainer/setup.sh && npm install -g netlify-cli",
   "customizations": {
     "vscode": {
       "extensions": [
