@@ -1,5 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <uses-permission android:name="android.permission.INTERNET"/>\n    <application
+    <uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <application
         android:label="dynamic_wrapper_app"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">

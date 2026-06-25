@@ -8,10 +8,12 @@ list(APPEND FLUTTER_PLUGIN_LIST
   firebase_remote_config
   flutter_inappwebview_windows
   screen_retriever_windows
+  url_launcher_windows
   window_manager
 )
 
 list(APPEND FLUTTER_FFI_PLUGIN_LIST
+  jni
 )
 
 set(PLUGIN_BUNDLED_LIBRARIES)
