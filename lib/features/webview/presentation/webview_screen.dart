@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
@@ -6,6 +7,7 @@ import 'package:window_manager/window_manager.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_remote_config/firebase_remote_config.dart';
 import 'package:firebase_app_check/firebase_app_check.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import '../../fallback/domain/fallback_manager.dart';
 
 class WebViewScreen extends StatefulWidget {
@@ -25,11 +27,15 @@ class _WebViewScreenState extends State<WebViewScreen> {
   
   bool _isInitializing = true;
   bool _isSwitching = false;
-  // الجدار العازل المطلق: عند تفعيله يتم إخفاء المتصفح من الوجود لمنع عرض نصوص 404
   bool _isEmergencyFallback = false; 
   
   bool _isTotalFailure = false;
   String _errorMessage = '';
+
+  // 🛡️ متغيرات محرك المرونة الشبكية
+  bool _isOfflineError = false;
+  bool _isRetrying = false;
+  late StreamSubscription<List<ConnectivityResult>> _connectivitySubscription;
 
   @override
   void initState() {
@@ -42,7 +48,19 @@ class _WebViewScreenState extends State<WebViewScreen> {
       useShouldInterceptRequest: false, 
       supportMultipleWindows: false,
     );
+    _initNetworkEngine();
     _initFirstUrl();
+  }
+
+  // 🛡️ استشعار الشبكة والتعافي التلقائي الفوري
+  void _initNetworkEngine() {
+    _connectivitySubscription = Connectivity().onConnectivityChanged.listen((List<ConnectivityResult> results) {
+      // إذا كان هناك اتصال، وكنا عالقين في شاشة الخطأ الشبكي، نفذ إعادة المحاولة تلقائياً
+      if (!results.contains(ConnectivityResult.none) && _isOfflineError) {
+         debugPrint('🌐 عودة الإنترنت! جاري الاستئناف التلقائي...');
+         _performRetry();
+      }
+    });
   }
 
   Future<void> _initFirstUrl() async {
@@ -64,15 +82,50 @@ class _WebViewScreenState extends State<WebViewScreen> {
       isSecure: true, 
       isHttpOnly: false,
     );
-    debugPrint('🔐 تم حقن الدرع الأمني بنجاح للرابط: $url');
   }
 
-  // المحرك الذكي للتعامل مع انهيارات الإطار الرئيسي (Main Frame)
+  // 🛡️ دالة إعادة المحاولة (اليدوية والتلقائية)
+  Future<void> _performRetry() async {
+    if (_isRetrying) return; // منع التكرار
+
+    setState(() {
+      _isRetrying = true;
+    });
+
+    // التحقق من حالة الشبكة قبل محاولة التحميل
+    final connectivityResult = await Connectivity().checkConnectivity();
+    if (connectivityResult.contains(ConnectivityResult.none)) {
+      // لا يزال منقطعاً
+      if (mounted) {
+        setState(() {
+          _isRetrying = false;
+        });
+      }
+      return;
+    }
+
+    setState(() {
+      _isOfflineError = false;
+      _isSwitching = true; // رفع الجدار الأسود لمنع الوميض أثناء إعادة التحميل
+    });
+
+    await _injectSecurityToken(widget.urls[_currentUrlIndex]);
+    await webViewController?.loadUrl(urlRequest: URLRequest(url: WebUri(widget.urls[_currentUrlIndex])));
+
+    if (mounted) {
+      setState(() {
+        _isRetrying = false;
+        _isSwitching = false;
+      });
+    }
+  }
+
+  // المحرك الذكي للتعامل مع انهيارات الإطار الرئيسي (الخاصة بالخوادم و 404)
   void _handleMainFrameError() async {
-    if (_isSwitching || _isEmergencyFallback) return; // منع التكرار
+    if (_isSwitching || _isEmergencyFallback || _isOfflineError) return; 
     
     setState(() {
-      _isSwitching = true; // رفع الجدار الأسود فوراً
+      _isSwitching = true; 
     });
     
     await webViewController?.stopLoading();
@@ -80,17 +133,14 @@ class _WebViewScreenState extends State<WebViewScreen> {
     if (_currentUrlIndex < widget.urls.length - 1) {
       _currentUrlIndex++;
       final nextUrl = widget.urls[_currentUrlIndex];
-      debugPrint('🔄 تحويل صامت إلى الاستضافة البديلة: $nextUrl');
       
       await _injectSecurityToken(nextUrl);
       webViewController?.loadUrl(urlRequest: URLRequest(url: WebUri(nextUrl)));
       
       if (mounted) setState(() => _isSwitching = false);
     } else {
-      debugPrint('❌ جميع الروابط فشلت. جاري استدعاء حاوية الطوارئ المشفرة...');
       if (mounted) {
         setState(() {
-          // تدمير المتصفح من واجهة المستخدم بالكامل لضمان عدم ظهور أي نص غريب
           _isEmergencyFallback = true; 
         });
       }
@@ -131,7 +181,6 @@ class _WebViewScreenState extends State<WebViewScreen> {
 
       if (fallbackEncryptedUrl.isNotEmpty) {
         if (!mounted) return;
-        // استدعاء واجهة (عليك ترقية التطبيق الآن) مع زري التنزيل والخروج الصارم (exit(0))
         await FallbackManager.executeFallback(context, fallbackEncryptedUrl);
       } else {
          throw Exception('Fallback URL is empty.');
@@ -147,40 +196,33 @@ class _WebViewScreenState extends State<WebViewScreen> {
   }
 
   @override
+  void dispose() {
+    _connectivitySubscription.cancel();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     if (_isTotalFailure) {
       return Scaffold(
         backgroundColor: const Color(0xFF121212),
         body: Center(
           child: Padding(
+             // ... واجهة الفشل المطلق السابقة ...
             padding: const EdgeInsets.all(20.0),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 const Icon(Icons.security_update_warning_rounded, size: 60, color: Colors.redAccent),
                 const SizedBox(height: 20),
-                Text(
-                  _errorMessage,
-                  style: const TextStyle(color: Colors.white70, fontSize: 12, height: 1.5, fontFamily: 'monospace'),
-                  textAlign: TextAlign.left,
-                  textDirection: TextDirection.ltr,
-                ),
+                Text(_errorMessage, style: const TextStyle(color: Colors.white70, fontSize: 12, height: 1.5, fontFamily: 'monospace'), textAlign: TextAlign.left, textDirection: TextDirection.ltr),
                 const SizedBox(height: 30),
                 ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blueGrey.shade800,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                  ),
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.blueGrey.shade800, foregroundColor: Colors.white),
                   icon: const Icon(Icons.refresh),
                   label: const Text('إعادة المحاولة', style: TextStyle(fontSize: 16)),
                   onPressed: () {
-                     setState(() {
-                       _isTotalFailure = false;
-                       _isInitializing = true;
-                       _isEmergencyFallback = false;
-                       _currentUrlIndex = 0;
-                     });
+                     setState(() { _isTotalFailure = false; _isInitializing = true; _isEmergencyFallback = false; _currentUrlIndex = 0; });
                      _initFirstUrl();
                   },
                 )
@@ -191,13 +233,61 @@ class _WebViewScreenState extends State<WebViewScreen> {
       );
     }
 
-    // الجدار البصري الأسود أثناء التهيئة أو عند تفعيل محرك الطوارئ
-    // هذا الشرط يحجب المتصفح من الوجود، فلا يمكن رؤية أي نص أو شاشة بيضاء لـ Netlify
-    if (_isInitializing || _isEmergencyFallback) {
-      return const Scaffold(
-        backgroundColor: Colors.black,
-        body: SizedBox.shrink(),
+    // 🛡️ واجهة الانقطاع الشبكي المتجاوبة (Responsive)
+    if (_isOfflineError) {
+      return Scaffold(
+        backgroundColor: Colors.black, // الحفاظ على الهوية البصرية والعزل البصري
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 32.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                // يمكن استبدال هذه الأيقونة بصورة الشعار (SVG) الخاص بك مستقبلاً
+                Icon(Icons.wifi_off_rounded, size: 80, color: Colors.grey.shade600),
+                const SizedBox(height: 24),
+                const Text(
+                  'انقطع الاتصال بالإنترنت أو تعذر جلب المورد',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
+                  textAlign: TextAlign.center,
+                  textDirection: TextDirection.rtl,
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'يرجى التحقق من اتصالك. سيتم استئناف التطبيق تلقائياً فور عودة الإنترنت.',
+                  style: TextStyle(fontSize: 14, color: Colors.white54),
+                  textAlign: TextAlign.center,
+                  textDirection: TextDirection.rtl,
+                ),
+                const SizedBox(height: 40),
+                SizedBox(
+                  height: 48,
+                  width: 200,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blueAccent,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+                    ),
+                    onPressed: _isRetrying ? null : _performRetry,
+                    child: _isRetrying
+                        ? const SizedBox(
+                            width: 24,
+                            height: 24,
+                            child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white),
+                          )
+                        : const Text('إعادة المحاولة', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       );
+    }
+
+    if (_isInitializing || _isEmergencyFallback) {
+      return const Scaffold(backgroundColor: Colors.black, body: SizedBox.shrink());
     }
 
     return Scaffold(
@@ -215,21 +305,26 @@ class _WebViewScreenState extends State<WebViewScreen> {
                   await windowManager.focus();
                 }
               },
-              onReceivedHttpError: (controller, request, errorResponse) async {
-                // الاعتماد على isForMainFrame لتجاهل أي تغييرات في الرابط واصطياد الخطأ بدقة 100%
+              // 🛡️ اصطياد أخطاء الاتصال والانقطاع (Network & Resource Failures)
+              onReceivedError: (controller, request, error) async {
                 if (request.isForMainFrame == true) {
-                  _handleMainFrameError();
+                  debugPrint('⚠️ خطأ في تحميل المورد أو الشبكة: ${error.description}');
+                  // رمز الخطأ يختلف باختلاف المنصة، لكننا نعتبر أي فشل تحميل هنا مشكلة شبكة/مورد
+                  if (mounted) {
+                    setState(() {
+                       _isOfflineError = true;
+                    });
+                  }
                 }
               },
-              onReceivedError: (controller, request, error) async {
+              // اصطياد أخطاء الخادم (مثل 404 DEPLOYMENT_NOT_FOUND)
+              onReceivedHttpError: (controller, request, errorResponse) async {
                 if (request.isForMainFrame == true) {
                   _handleMainFrameError();
                 }
               },
             ),
-            // جدار عزل صلب يغطي المتصفح تماماً أثناء الانتقال بين الروابط
-            if (_isSwitching)
-               Container(color: Colors.black), 
+            if (_isSwitching) Container(color: Colors.black), 
           ],
         ),
       ),
