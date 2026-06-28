@@ -1,3 +1,4 @@
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -14,6 +15,8 @@ class SplashHandler extends StatefulWidget {
 }
 
 class _SplashHandlerState extends State<SplashHandler> {
+  bool _isOfflineError = false;
+  bool _isRetrying = false;
   bool _isTotalFailure = false;
   String _errorMessage = '';
 
@@ -122,16 +125,95 @@ class _SplashHandlerState extends State<SplashHandler> {
     } catch (secondaryError) {
       debugPrint('❌ فشل مطلق: $secondaryError');
       if (mounted) {
-        setState(() {
-          _isTotalFailure = true;
-          _errorMessage = 'تعذر الاتصال بالخوادم الآمنة.\n\n[P]: $primaryErrorText\n\n[S]: $secondaryError';
-        });
+                    // تقييم الخطأ المبني برمجياً أياً كانت المتغيرات التي استخدمتها
+            final builtError = 'تعذر الاتصال بالخوادم الآمنة.\n\n[P]: $primaryErrorText\n\n[S]: $secondaryError';
+            
+            // 🛡️ مستشعر الإقلاع: التفرقة بين السقوط الفعلي لخوادم Firebase وبين انقطاع الإنترنت المحلي
+            if (builtError.contains('remote config fetch error') || builtError.contains('ClientException') || builtError.contains('network_error')) {
+               setState(() => _isOfflineError = true);
+               return;
+            }
+            
+            // إذا كان سقوطاً حقيقياً، نمرر الانهيار التام
+            setState(() {
+              _isTotalFailure = true;
+              _errorMessage = builtError;
+            });
       }
     }
   }
 
   @override
   Widget build(BuildContext context) {
+        // 🛡️ واجهة العزل البصرية الخاصة بشاشة الإقلاع
+    if (_isOfflineError) {
+      return Scaffold(
+        backgroundColor: Colors.black, // استمرار العزل البصري (Anti-Flash)
+        body: StreamBuilder<List<ConnectivityResult>>(
+          stream: Connectivity().onConnectivityChanged,
+          builder: (context, snapshot) {
+            final results = snapshot.data ?? [ConnectivityResult.none];
+            final isOffline = results.isEmpty || results.contains(ConnectivityResult.none);
+            
+            // الاستئناف التلقائي الفوري فور عودة الإنترنت
+            if (!isOffline && !_isRetrying) {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted) {
+                  setState(() => _isRetrying = true);
+                  // استنساخ الشاشة لإعادة دورة الإقلاع وجلب بيانات Firebase مجدداً
+                  Navigator.pushReplacement(context, PageRouteBuilder(pageBuilder: (_, _, _) => widget));
+                }
+              });
+            }
+
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 32.0),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.wifi_off_rounded, size: 80, color: Colors.grey.shade600),
+                    const SizedBox(height: 24),
+                    const Text(
+                      'انقطع الاتصال بالإنترنت أو تعذر الاتصال بالخوادم',
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
+                      textAlign: TextAlign.center,
+                      textDirection: TextDirection.rtl,
+                    ),
+                    const SizedBox(height: 12),
+                    const Text(
+                      'يرجى التحقق من اتصالك. سيتم استئناف الإقلاع تلقائياً فور عودة الإنترنت.',
+                      style: TextStyle(fontSize: 14, color: Colors.white54),
+                      textAlign: TextAlign.center,
+                      textDirection: TextDirection.rtl,
+                    ),
+                    const SizedBox(height: 40),
+                    SizedBox(
+                      height: 48,
+                      width: 200,
+                      child: ElevatedButton(
+                         style: ElevatedButton.styleFrom(
+                           backgroundColor: Colors.blueAccent,
+                           foregroundColor: Colors.white,
+                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+                         ),
+                         onPressed: _isRetrying ? null : () {
+                           setState(() => _isRetrying = true);
+                           Navigator.pushReplacement(context, PageRouteBuilder(pageBuilder: (_, _, _) => widget));
+                         },
+                         child: _isRetrying 
+                            ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white))
+                            : const Text('إعادة المحاولة', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
+      );
+    }
     if (_isTotalFailure) {
       return Scaffold(
         backgroundColor: const Color(0xFF121212),

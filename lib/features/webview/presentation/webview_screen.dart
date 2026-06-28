@@ -55,10 +55,16 @@ class _WebViewScreenState extends State<WebViewScreen> {
   // 🛡️ استشعار الشبكة والتعافي التلقائي الفوري
   void _initNetworkEngine() {
     _connectivitySubscription = Connectivity().onConnectivityChanged.listen((List<ConnectivityResult> results) {
-      // إذا كان هناك اتصال، وكنا عالقين في شاشة الخطأ الشبكي، نفذ إعادة المحاولة تلقائياً
-      if (!results.contains(ConnectivityResult.none) && _isOfflineError) {
-         debugPrint('🌐 عودة الإنترنت! جاري الاستئناف التلقائي...');
-         _performRetry();
+      final isOffline = results.isEmpty || results.contains(ConnectivityResult.none);
+      if (isOffline) {
+        // إذا انقطع الإنترنت، نُفعل واجهة العزل فوراً دون انتظار خطأ من المتصفح
+        if (mounted && !_isOfflineError && !_isTotalFailure) {
+          setState(() => _isOfflineError = true);
+        }
+      } else {
+        if (mounted && _isOfflineError) {
+          _performRetry();
+        }
       }
     });
   }
@@ -109,8 +115,13 @@ class _WebViewScreenState extends State<WebViewScreen> {
       _isSwitching = true; // رفع الجدار الأسود لمنع الوميض أثناء إعادة التحميل
     });
 
-    await _injectSecurityToken(widget.urls[_currentUrlIndex]);
-    await webViewController?.loadUrl(urlRequest: URLRequest(url: WebUri(widget.urls[_currentUrlIndex])));
+        if (_isEmergencyFallback) {
+      // إذا كان الفشل من خوادم الطوارئ، نعيد الاتصال بـ Firebase بدلاً من المتصفح
+      await _executeSecondaryFallbackLifecycle('Retry from Offline UI');
+    } else if (widget.urls.isNotEmpty) {
+      await _injectSecurityToken(widget.urls[_currentUrlIndex]);
+      await webViewController?.loadUrl(urlRequest: URLRequest(url: WebUri(widget.urls[_currentUrlIndex])));
+    }
 
     if (mounted) {
       setState(() {
@@ -187,10 +198,20 @@ class _WebViewScreenState extends State<WebViewScreen> {
       }
     } catch (secondaryError) {
       if (mounted) {
-        setState(() {
-          _isTotalFailure = true;
-          _errorMessage = 'تعذر الاتصال بالخوادم الآمنة.\n\n[P]: $primaryErrorText\n\n[S]: $secondaryError';
-        });
+                    // تقييم الخطأ المبني برمجياً أياً كانت المتغيرات التي استخدمتها
+            final builtError = 'تعذر الاتصال بالخوادم الآمنة.\n\n[P]: $primaryErrorText\n\n[S]: $secondaryError';
+            
+            // 🛡️ مستشعر الإقلاع: التفرقة بين السقوط الفعلي لخوادم Firebase وبين انقطاع الإنترنت المحلي
+            if (builtError.contains('remote config fetch error') || builtError.contains('ClientException') || builtError.contains('network_error')) {
+               setState(() => _isOfflineError = true);
+               return;
+            }
+            
+            // إذا كان سقوطاً حقيقياً، نمرر الانهيار التام
+            setState(() {
+              _isTotalFailure = true;
+              _errorMessage = builtError;
+            });
       }
     }
   }
