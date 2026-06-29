@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -197,8 +198,55 @@ class _WebViewScreenState extends State<WebViewScreen> {
     super.dispose();
   }
 
+    DateTime? currentBackPressTime;
+
   @override
   Widget build(BuildContext context) {
+    return PopScope(
+      canPop: false, // منع الخروج الافتراضي المباشر
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        
+        // 1. الأولوية للتصفح العكسي داخل موقع Flutter Web
+        if (webViewController != null && !_isOfflineError && !_isTotalFailure) {
+          if (await webViewController!.canGoBack()) {
+             await webViewController!.goBack();
+             return; // إيقاف تنفيذ الخروج لأن المستخدم عاد للخلف داخل الموقع
+          }
+        }
+        
+        // 2. محرك النقر المزدوج للخروج النهائي (Double-Tap to Exit)
+        DateTime now = DateTime.now();
+        if (currentBackPressTime == null || now.difference(currentBackPressTime!) > const Duration(seconds: 2)) {
+          currentBackPressTime = now;
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: const Text(
+                  'انقر مرة أخرى للخروج من التطبيق',
+                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15),
+                  textAlign: TextAlign.center,
+                  textDirection: TextDirection.rtl,
+                ),
+                backgroundColor: Colors.blueGrey.shade900,
+                duration: const Duration(seconds: 2),
+                behavior: SnackBarBehavior.floating,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                margin: const EdgeInsets.only(bottom: 24, left: 24, right: 24),
+              ),
+            );
+          }
+        } else {
+          // الخروج النهائي والفوري من التطبيق
+          SystemNavigator.pop();
+        }
+      },
+      child: _buildContent(context),
+    );
+  }
+
+  // الدالة الأساسية المعمارية (تم إعادة تسميتها للحفاظ على الأكواد السابقة 100%)
+  Widget _buildContent(BuildContext context) {
     if (_isTotalFailure) {
       return Scaffold(
         backgroundColor: const Color(0xFF121212),
