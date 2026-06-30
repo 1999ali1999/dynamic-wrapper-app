@@ -37,12 +37,15 @@ class _WebViewScreenState extends State<WebViewScreen> {
   bool _isRetrying = false;
   
   // 🛡️ المتغير المعماري الجديد: لمراقبة هل انهارت الصفحة فعلياً أم مجرد انقطاع خلفي
-  bool _mainFrameFailed = false; 
+  bool _mainFrameFailed = false;
+  
+   
   late StreamSubscription<List<ConnectivityResult>> _connectivitySubscription;
 
   @override
   void initState() {
     super.initState();
+    
     settings = InAppWebViewSettings(
       transparentBackground: true, 
       hardwareAcceleration: true,  
@@ -290,6 +293,9 @@ class _WebViewScreenState extends State<WebViewScreen> {
             InAppWebView(
               initialUrlRequest: URLRequest(url: WebUri(widget.urls[_currentUrlIndex])),
               initialSettings: settings,
+              
+              
+              
               onWebViewCreated: (controller) async {
                 webViewController = controller;
                 if (!kIsWeb && (Platform.isWindows || Platform.isMacOS || Platform.isLinux)) {
@@ -314,7 +320,7 @@ class _WebViewScreenState extends State<WebViewScreen> {
             // الطبقة الثانية: منع الوميض عند تغيير الروابط
             if (_isSwitching) Container(color: Colors.black), 
             
-            // الطبقة الثالثة العلوية: واجهة العزل البصرية (تغطي المتصفح دون أن تدمره)
+                        // الطبقة الثالثة العلوية: واجهة العزل البصرية (تغطي المتصفح دون أن تدمره)
             if (_isOfflineError)
               Container(
                 color: Colors.black, // حجب بصري تام
