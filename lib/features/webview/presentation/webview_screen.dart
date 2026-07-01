@@ -1,6 +1,7 @@
 import 'dart:io';
-import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
@@ -47,12 +48,40 @@ class _WebViewScreenState extends State<WebViewScreen> {
     super.initState();
     
     settings = InAppWebViewSettings(
-      transparentBackground: true, 
-      hardwareAcceleration: true,  
-      javaScriptEnabled: true,
-      cacheEnabled: true,
-      useShouldInterceptRequest: false, 
+      // 1. الأساسيات المعمارية (بدون خنق للجسر)
+      transparentBackground: true,
+      useShouldInterceptRequest: false, // 🚀 الأهم للأداء: نقل البيانات المباشر بدون المرور بـ Dart
       supportMultipleWindows: false,
+
+      // 2. تحرير العتاد (Hardware Acceleration) والـ Multithreading الأولي
+      hardwareAcceleration: true,
+      javaScriptEnabled: true,
+      javaScriptCanOpenWindowsAutomatically: true, // ضروري جداً لإنشاء خيوط Web Workers
+
+      // 3. التخزين المؤقت المتقدم (حيوي جداً لـ Wasm Caching و IndexedDB)
+      cacheEnabled: true,
+      domStorageEnabled: true,
+      databaseEnabled: true,
+
+      // 4. القضاء على تأخير اللمس (Zero-Latency Touch)
+      supportZoom: false, // 🚀 إلغاء هذا يزيل تأخير 300ms الإجباري عند النقر في WebView
+      builtInZoomControls: false,
+      displayZoomControls: false,
+      disableContextMenu: true, // منع نظام التشغيل من مقاطعة خيط واجهة المستخدم
+
+      // 5. تحرير الميديا (لمنع تجميد خيط المعالجة بانتظار إذن المستخدم)
+      mediaPlaybackRequiresUserGesture: false,
+      allowsInlineMediaPlayback: true,
+
+      // 6. الآمان التام مع التوافق مع خيوط JS (Web Workers Blobs)
+      mixedContentMode: MixedContentMode.MIXED_CONTENT_NEVER_ALLOW, // آمان تام
+      allowFileAccessFromFileURLs: true, // ضروري لبعض مكتبات الـ JS لتوليد خيوط داخلية
+      allowUniversalAccessFromFileURLs: true,
+
+      // 7. تحسينات الذاكرة الخاصة بـ iOS لمنع انهيار (Out of Memory - OOM)
+      allowsLinkPreview: false, // إيقاف الـ 3D Touch يحرر مساحة هائلة من الذاكرة العشوائية
+      isFraudulentWebsiteWarningEnabled: true,
+      disableDefaultErrorPage: true, // الغلاف الخاص بنا يتولى الأخطاء بذكاء
     );
     _initNetworkEngine();
     _initFirstUrl();
@@ -297,6 +326,32 @@ class _WebViewScreenState extends State<WebViewScreen> {
               
               
               onWebViewCreated: (controller) async {
+                                // 🛡️ الوكيل الجسري: يستقبل الروابط المرفوضة من الويب ويحملها محلياً متجاوزاً CORS
+                controller.addJavaScriptHandler(
+                  handlerName: 'NativeMediaProxy',
+                  callback: (args) async {
+                    if (args.isEmpty) return null;
+                    final targetUrl = args[0] as String;
+                    try {
+                      final client = HttpClient();
+                      final request = await client.getUrl(Uri.parse(targetUrl));
+                      final response = await request.close();
+                      
+                      if (response.statusCode != 200) return null;
+                      
+                      // قراءة البيانات وتحويلها إلى Base64 آمن
+                      final bytes = await consolidateHttpClientResponseBytes(response);
+                      final base64String = base64Encode(bytes);
+                      final mimeType = response.headers.contentType?.mimeType ?? 'image/jpeg';
+                      
+                      return 'data:$mimeType;base64,$base64String';
+                    } catch (e) {
+                      debugPrint('❌ فشل الوكيل الجسري في جلب المورد: $e');
+                      return null;
+                    }
+                  }
+                );
+
                 webViewController = controller;
                 if (!kIsWeb && (Platform.isWindows || Platform.isMacOS || Platform.isLinux)) {
                   await windowManager.show();
